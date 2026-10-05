@@ -16,7 +16,7 @@ import test from "node:test";
 import { discoverAndLoadExtensions, type Extension, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { PACKAGE_ROOT } from "../helpers/root.ts";
 
-const EXPECTED_EVENTS = ["context_with_system"];
+const EXPECTED_EVENTS = ["before_agent_start", "context_with_system"];
 const EXPECTED_TOOLS = ["skill"];
 
 async function loadSkillExtension(): Promise<Extension> {
@@ -46,10 +46,12 @@ test("registers exactly the skill tool", async () => {
 	assert.ok(typeof snippet === "string" && !snippet.includes("\n"), "the tool adds one line to the tools section");
 });
 
-test("registers one context_with_system handler and nothing else", async () => {
+test("registers one handler per prompt-shaping event and nothing else", async () => {
 	const extension = await loadSkillExtension();
 	assert.deepEqual([...extension.handlers.keys()].sort(), EXPECTED_EVENTS);
-	assert.equal(extension.handlers.get("context_with_system")?.length, 1, "one handler owns the rewrite");
+	for (const event of EXPECTED_EVENTS) {
+		assert.equal(extension.handlers.get(event)?.length, 1, `${event} must have exactly one handler`);
+	}
 	assert.deepEqual([...extension.commands.keys()], []);
 	assert.deepEqual([...extension.shortcuts.keys()], []);
 	assert.deepEqual([...extension.flags.keys()], []);

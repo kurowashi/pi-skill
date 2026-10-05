@@ -15,6 +15,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type {
 	AgentToolResult,
+	BeforeAgentStartEvent,
 	ContextWithSystemEvent,
 	ExtensionAPI,
 	ExtensionToolContext,
@@ -27,7 +28,7 @@ const SOURCE: SourceInfo = { path: "/skills", source: "local", scope: "user", or
 
 type Message = ContextWithSystemEvent["messages"][number];
 
-type Handler = (event: ContextWithSystemEvent, ctx?: unknown) => unknown;
+type Handler = (event: ContextWithSystemEvent | BeforeAgentStartEvent, ctx?: unknown) => unknown;
 
 interface ContextResult {
 	messages: Message[];
@@ -35,6 +36,11 @@ interface ContextResult {
 
 interface Harness {
 	emit(messages: Message[]): Promise<ContextResult | undefined>;
+	beforeAgentStart(
+		selectedTools: string[],
+		skills: Skill[],
+		sections?: Record<string, string>,
+	): Promise<BeforeAgentStartEvent>;
 	tool: ToolDefinition;
 }
 
@@ -81,14 +87,26 @@ function createHarness(active: readonly string[] = ["skill"]): Harness {
 		getActiveTools: () => [...active],
 	} as unknown as ExtensionAPI;
 	skillExtension(pi);
-	const handler = handlers.get("context_with_system")?.[0];
-	assert.ok(handler, "context_with_system handler must be registered");
+	const contextHandler = handlers.get("context_with_system")?.[0];
+	assert.ok(contextHandler, "context_with_system handler must be registered");
+	const startHandler = handlers.get("before_agent_start")?.[0];
+	assert.ok(startHandler, "before_agent_start handler must be registered");
 	const tool = tools.get("skill");
 	assert.ok(tool, "skill tool must be registered");
 	return {
 		async emit(messages) {
-			const result = await handler({ type: "context_with_system", messages } as ContextWithSystemEvent);
+			const result = await contextHandler({ type: "context_with_system", messages } as ContextWithSystemEvent);
 			return result as ContextResult | undefined;
+		},
+		async beforeAgentStart(selectedTools, skills, sections = {}) {
+			const event = {
+				type: "before_agent_start",
+				prompt: "",
+				systemPrompt: "",
+				systemPromptOptions: { selectedTools, skills, sections },
+			} as unknown as BeforeAgentStartEvent;
+			await startHandler(event);
+			return event;
 		},
 		tool,
 	};
@@ -128,6 +146,70 @@ test("removes locations from the request and leaves the transcript alone", async
 		assert.ok(String(rewritten).includes("Use the skill tool"), "the model is told to use the tool");
 		assert.deepEqual(result.messages[1], messages[1], "conversation messages are untouched");
 		assert.ok(section.includes("<location>"), "the transcript keeps Pi's original section");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("supplies the skills list when no file-read tool is available", async () => {
+	const event = await createHarness().beforeAgentStart(["edit", "write"], [piSkill("a", "/skills/a")]);
+	const section = event.systemPromptOptions.sections["skills"];
+	assert.equal(typeof section, "string");
+	assert.ok(String(section).includes("<name>a</name>"), "the list must carry names");
+	assert.ok(String(section).includes("<description>a description</description>"), "the list must carry descriptions");
+	assert.ok(
+		String(section).includes("<location>/skills/a/SKILL.md</location>"),
+		"Pi's shape is preserved for the rewrite",
+	);
+});
+
+test("leaves the skills section to Pi when read or bash is available", async () => {
+	for (const selectedTools of [["read"], ["bash"]]) {
+		const event = await createHarness().beforeAgentStart(selectedTools, [piSkill("a", "/skills/a")]);
+		assert.equal(event.systemPromptOptions.sections["skills"], undefined);
+	}
+});
+
+test("respects an existing skills section from another extension", async () => {
+	const existing = "<skills>owned</skills>";
+	const event = await createHarness().beforeAgentStart(["edit"], [piSkill("a", "/skills/a")], {
+		skills: existing,
+	});
+	assert.equal(event.systemPromptOptions.sections["skills"], existing);
+});
+
+test("does not supply the list for a disabled tool or without visible skills", async () => {
+	const inactive = await createHarness([]).beforeAgentStart(["edit"], [piSkill("a", "/skills/a")]);
+	assert.equal(inactive.systemPromptOptions.sections["skills"], undefined);
+
+	const empty = await createHarness().beforeAgentStart(["edit"], []);
+	assert.equal(empty.systemPromptOptions.sections["skills"], undefined);
+
+	const hidden = piSkill("a", "/skills/a");
+	hidden.disableModelInvocation = true;
+	const allHidden = await createHarness().beforeAgentStart(["edit"], [hidden]);
+	assert.equal(allHidden.systemPromptOptions.sections["skills"], undefined);
+});
+
+test("the supplied list is rewritten and loadable without a file-read tool", async () => {
+	const root = temporaryDirectory("pi-skill-noread-");
+	try {
+		const directory = writeSkill(root, "a", "---\nname: a\n---\n\n# A\n");
+		const harness = createHarness();
+		const event = await harness.beforeAgentStart(["edit"], [piSkill("a", directory)]);
+		const supplied = event.systemPromptOptions.sections["skills"];
+		assert.equal(typeof supplied, "string");
+		const result = await harness.emit([
+			systemMessage({ skills: `<skills>\n${String(supplied)}\n</skills>` }),
+			userMessage(),
+		]);
+		assert.ok(result);
+		const rewritten = sectionsOf(result.messages[0] as Message)?.["skills"];
+		assert.ok(String(rewritten).includes("<name>a</name>"));
+		assert.ok(!String(rewritten).includes("<location>"), "the request carries no locations");
+		const loaded = await load(harness.tool, "a");
+		assert.equal(loaded.isError, undefined);
+		assert.ok(textOf(loaded).includes("# A"));
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

@@ -7,7 +7,9 @@
  * The locations cost context on every request and reading can come back
  * partial. This extension rewrites the section for each request — locations
  * removed, instructions pointing at the `skill` tool — and serves the same
- * index to the tool.
+ * index to the tool. When neither `read` nor `bash` is selected, Pi omits the
+ * section entirely; the extension supplies it in Pi's format because the
+ * `skill` tool does not need those tools.
  *
  * The rewrite happens in `context_with_system`, after every
  * `before_agent_start` handler has shaped the section. Filters such as
@@ -24,7 +26,7 @@ import type {
 	ContextWithSystemEvent,
 	ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
+import { formatSkillsForPrompt, stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { formatSkillBlock, type IndexedSkill, parseSkillIndex, renderSkillSection, SkillRegistry } from "./skills.ts";
 
@@ -70,6 +72,20 @@ export default function skillExtension(pi: ExtensionAPI): void {
 				return errorResult(`Could not read ${skill.filePath}: ${messageOf(error)}`);
 			}
 		},
+	});
+
+	pi.on("before_agent_start", (event) => {
+		// Pi generates the skills section only when a file-read tool (`read` or
+		// `bash`) is selected, because its instructions load skills with those
+		// tools. The `skill` tool replaces that path, so supply the same format
+		// when neither is selected; `context_with_system` then rewrites it.
+		if (!pi.getActiveTools().includes(TOOL_NAME)) return;
+		const { selectedTools, skills, sections } = event.systemPromptOptions;
+		if (selectedTools.includes("read") || selectedTools.includes("bash")) return;
+		// Another extension may already own this section; only fill the gap Pi left.
+		if (SKILLS_SECTION in sections) return;
+		const prompt = formatSkillsForPrompt(skills ?? [], "read").trim();
+		if (prompt) sections[SKILLS_SECTION] = prompt;
 	});
 
 	pi.on("context_with_system", (event) => {

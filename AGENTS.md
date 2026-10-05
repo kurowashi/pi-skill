@@ -17,7 +17,7 @@
 | モデル向けのツールは `skill` 1つだけ | `test/contract/surface.test.ts` | `src/index.ts` |
 | ツールは `name` 1パラメータを取る | `test/integration/extension.test.ts` | `src/index.ts` |
 | ツールの常時コストは tools セクション1行（promptSnippet）に収まる | `test/contract/surface.test.ts` | `src/index.ts` |
-| イベントは `context_with_system` のみで、ハンドラは1つ | `test/contract/surface.test.ts` | `src/index.ts` |
+| イベントは `before_agent_start` と `context_with_system` のみで、各1ハンドラ | `test/contract/surface.test.ts` | `src/index.ts` |
 | コマンド・ショートカット・フラグを登録しない | `test/contract/surface.test.ts` | `src/index.ts` |
 
 ### セクションの書き換え
@@ -32,12 +32,16 @@
 | セクション不在なら何も返さない | `test/integration/extension.test.ts` | `src/index.ts` |
 | 解析結果が0件または一部のみなら何も返さない | `test/unit/section.test.ts` と `test/integration/extension.test.ts` | `src/skills.ts` の `parseSkillIndex` |
 | XML entities を解析時に復号し、描画時にエスケープする | `test/unit/section.test.ts` | `src/skills.ts` の `unescapeXml` / `escapeXml` |
+| `skill` 有効・read / bash 無効・可視スキルありで Pi 形式の一覧を補う | `test/integration/extension.test.ts` | `src/index.ts` の `before_agent_start` |
+| read か bash が有効なら skills セクションに触れない | `test/integration/extension.test.ts` | `src/index.ts` の `before_agent_start` |
+| ツール無効または可視スキル0件なら一覧を補わない | `test/integration/extension.test.ts` | `src/index.ts` の `before_agent_start` |
+| 他拡張が設定した `sections.skills` を上書きしない | `test/integration/extension.test.ts` | `src/index.ts` の `before_agent_start` |
 
 ### ツール
 
 | 制約 | 検証 | 定義・実装箇所 |
 |---|---|---|
-| frontmatter を除いた本文を返す | `test/integration/extension.test.ts` | `src/index.ts` の `execute` |
+| frontmatter と前後空白を除いた本文を返す | `test/integration/extension.test.ts` | `src/index.ts` の `execute` |
 | 結果は `/skill:name` の展開と同一形式 | `test/unit/section.test.ts` | `src/skills.ts` の `formatSkillBlock` |
 | 基準ディレクトリを結果に含める | `test/integration/extension.test.ts` | `src/skills.ts` の `formatSkillBlock` |
 | セクションに無いスキルは読めない | `test/integration/extension.test.ts` | `src/index.ts` の `SkillRegistry` |
@@ -100,4 +104,4 @@
 3. `/skill:name` が従来どおり本文と引数を展開すること。
 4. pi-switch でスキルを無効化すると一覧から消え、`skill` ツールでも読めないこと。有効に戻すと復帰すること。
 5. スキルを追加して `/reload` すると、次のリクエストの一覧に載り、`skill` ツールで読めること。
-6. `skill` ツールを無効化すると、一覧が Pi 既定（location 付き・`read` で読む）に戻ること。
+6. `skill` を無効化し、`read` または `bash` が有効な場合は、一覧が Pi 既定（location 付き・`read` で読む）に戻ること。`skill`・`read`・`bash` をすべて無効化した場合は skills セクションが生成されないこと。

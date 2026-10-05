@@ -11,13 +11,14 @@
 | 状態 | 観測方法 |
 |---|---|
 | skills セクションから location が消える | `test/integration/extension.test.ts` の location 除去テスト |
-| モデルが frontmatter を除いた本文と基準ディレクトリを得る | 同 の本文読み出しテスト |
+| モデルが frontmatter と本文の前後空白を除いた本文と基準ディレクトリを得る | 同 の本文読み出しテスト |
 | 読み出し結果が `/skill:name` の展開と同一形式 | `test/unit/section.test.ts` の golden 値 |
 | 表示されているスキルだけが読める | `test/integration/extension.test.ts` の一覧外の名前テスト |
 | ツール無効時は Pi 既定のプロンプトに戻る | 同 のツール無効テスト |
 | 形式が想定外でもスキルを黙って落とさない | `test/unit/section.test.ts` の部分解析・想定外形式テスト |
 | SKILL.md が読めなくてもセッションが止まらない | `test/integration/extension.test.ts` の読み取り失敗テスト |
-| 常時コストがツール1つとイベント1つに収まる | `test/contract/surface.test.ts` |
+| read と bash が無効でも一覧が出る | `test/integration/extension.test.ts` の一覧補完テスト |
+| 常時コストがツール1つとイベント2つに収まる | `test/contract/surface.test.ts` |
 
 ### 最小の成立条件
 
@@ -25,6 +26,7 @@
 |---|---|
 | `skill` ツールの登録（名前1つ、frontmatter と本文の前後空白を除いた本文と基準ディレクトリを返す） | モデルが `skill` ツールで本文と基準ディレクトリを得る |
 | `context_with_system` での skills セクション解析と再構築 | skills セクションから location が消える |
+| read / bash 無効時の Pi 形式の一覧補完 | read と bash が無効でも一覧が出る |
 | セクション由来の registry | 表示されているスキルだけが読める |
 | Pi の実出力を使った fixture テスト | 形式が変わると気づける |
 | 無効・不在・想定外のときの no-op | ツール無効時は Pi 既定のプロンプトに戻る |
@@ -51,6 +53,7 @@
 - 書き換えは `context_with_system` で行います。`before_agent_start` の `sections.skills` 上書きはハンドラの実行順に依存し、あとから `options.skills` をフィルタする拡張（pi-switch など）の結果を打ち消すことがあります。`context_with_system` は `before_agent_start` の後に発火するため、そこで確定した一覧を変換できます。
 - 書き換えの保証範囲は `before_agent_start` の結果までです。同じ `context_with_system` イベントの後続ハンドラがセクションを再変更した場合は反映しません。ツールの有効判定は `pi.getActiveTools()` とリクエスト時のツール宣言が一致することを前提とします。
 - transcript を変更しません。書き換えはリクエスト時だけなので、セッションの保存内容は Pi のままです。compaction・resume・`/reload` が書き換えの影響を受けません。
+- Pi が生成しない一覧は補います。Pi は `read` か `bash` が選択されているときだけ skills セクションを生成します。どちらも無効で、`skill` ツールが有効で、可視スキルが1件以上あり、他拡張が `sections.skills` を設定していないとき、`before_agent_start` で `sections.skills` に Pi と同じ形式の一覧を設定します。補完は `before_agent_start` の時点の `options.skills` を使うため、後から `options.skills` をフィルタする拡張の結果は反映されません。
 - 一覧とツールの index は同じセクションから作ります。表示されているスキルだけが読め、表示と実行が食い違いません。
 - Pi の形式を再利用します。読み出し結果は `/skill:name` の展開と同じブロックにし、一覧の XML 形式は Pi の出力を保ちます。
 - 想定外なら何もしません。セクション不在、解析結果0件、一部のスキルしか解析できないとき、ツール無効のときは Pi 既定のプロンプトをそのまま送ります。
@@ -65,6 +68,7 @@ Pi 1.0.3 で確認した前提です。
 | `context_with_system` は全 `before_agent_start` の後、送信直前に発火し、返した `messages` がそのまま送信される | `dist/core/extensions/runner.js` の `emitContext` |
 | transcript は `context_with_system` の返り値では変更されない | 送信経路の `transformContext`。pi-switch も同じ前提で動いています |
 | skills セクションは `systemPromptOptions.skills` から毎回再生成される | `dist/core/system-prompt.js` の `buildSystemPromptSections` |
+| skills セクションは `selectedTools` に `read` か `bash` があるときだけ生成される | `dist/core/system-prompt.js` の `buildSystemPromptSections` |
 | `disable-model-invocation` のスキルはセクションから除外される | `dist/core/skills.js` の `formatSkillsForPrompt` |
 | `/skill:name` の展開は `<skill name location>` ブロックで、本文は `stripFrontmatter` と `trim` 済み | `dist/core/agent-session.js` の `_expandSkillCommand` |
 | `/skill:name` の展開は name / location をエスケープせず属性へ埋める | `dist/core/agent-session.js` の `_expandSkillCommand`。読み出しブロックも同じ扱いに揃えています |

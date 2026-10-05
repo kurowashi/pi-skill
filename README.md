@@ -2,6 +2,8 @@
 
 Pi のスキルを `skill` ツールで読み出す Pi 拡張です。Pi はスキル一覧（名前・説明・SKILL.md の絶対パス）をシステムプロンプトに常時載せ、モデルに `read` で SKILL.md を読ませます。pi-skill は、`skill` ツールが有効で、モデル向けスキルが1件以上あり、skills セクションの全エントリを解析できたリクエストに限り、一覧から `<location>` を外して読み出しを `skill` ツールに置き換えます。それ以外は Pi 既定のプロンプトを変更しません。
 
+Pi が skills セクションを生成するのは `read` か `bash` が有効なときだけです。どちらも無効なときは、pi-skill が同じ形式で一覧を用意します。
+
 | 課題 | pi-skill の挙動 |
 |---|---|
 | パスが毎リクエストのコンテキストを消費する | `<location>` をリクエストから外し、ツール結果でのみ渡す |
@@ -9,11 +11,13 @@ Pi のスキルを `skill` ツールで読み出す Pi 拡張です。Pi はス�
 
 ```mermaid
 flowchart LR
-  A[Pi が skills セクションを生成] --> B[pi-skill が location を除去]
-  B --> C[モデルは名前と説明だけを見る]
-  C -->|説明が合う| D[skill ツールを呼ぶ]
-  D --> E[frontmatter を除いた本文と基準ディレクトリ]
-  C -->|ユーザーが /skill:name| F[Pi が従来どおり本文と引数を展開]
+  A{read または bash が有効?} -->|はい| B[Pi が skills セクションを生成]
+  A -->|いいえ| C[pi-skill が Pi 形式の一覧を補う]
+  B --> D[context_with_system で location を除去]
+  C --> D
+  D --> E[モデルは名前と説明だけを見る]
+  E -->|説明が合う| F[skill ツールを呼ぶ]
+  E -->|ユーザーが /skill:name| G[Pi が従来どおり本文と引数を展開]
 ```
 
 モデルが見る一覧は次のように変わります。
@@ -88,13 +92,17 @@ pi --extension /path/to/pi-skill/src/index.ts
 |---|---|
 | pi-switch などがスキルを無効化した | 一覧から消え、`skill` ツールでも読めない |
 | `disable-model-invocation: true` のスキル | 一覧に載らないため `skill` ツールでも読めない。`/skill:name` でだけ使える |
-| `skill` ツールが無効化された | 一覧を Pi 既定（location 付き・`read` で読む）に戻す |
+| `skill` が有効で `read` / `bash` が無効、可視スキルが1件以上 | pi-skill が Pi と同じ形式の一覧を補う |
+| `skill` が無効で `read` または `bash` が有効 | 一覧の書き換えをやめ、Pi 既定に戻す |
+| `skill`・`read`・`bash` がすべて無効 | 一覧は生成されない |
 | スキルが0件、または一部のスキルしか解析できない | 何も変更しない |
 | 一覧にない名前を指定した | エラーと利用可能なスキル名の一覧を返す |
 | 利用可能なスキルが無い状態で呼び出した | その旨のエラーを返す |
 | SKILL.md が読めない | ツールがエラーを返し、セッションは止まらない |
 | 別拡張が `forceSystemPrompt` でプロンプトを差し替えている | skills セクションが無いため何もしない（Pi の仕様） |
 | セッションの保存内容 | 変更しない。compaction・resume・`/reload` の影響なし |
+
+> `read` と `bash` が無効なときの一覧は `before_agent_start` 時点のスキル一覧から作ります。pi-skill より後に `options.skills` をフィルタする拡張の結果は反映されないため、pi-switch を使う場合は pi-switch を先に読み込んでください。
 
 ## 開発
 
