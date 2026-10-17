@@ -6,7 +6,45 @@ Pi は、すべてのスキルの名前・説明・SKILL.md の絶対パスを�
 パスは毎回コンテキストを消費し、`read` は limit 指定などで本文を全部返さないことがあります。
 pi-skill は、一覧からパスを外し、読み出しを `skill` ツールに替えます。
 
-## 動作
+## インストール
+
+動作要件は次のとおりです。
+
+- Pi 1.0.3 で動作確認しています。それ以前のバージョンは未検証です。
+- Node.js 22.19 以上
+
+```bash
+pi install git:github.com/kurowashi/pi-skill
+```
+
+バージョンを固定する場合は `pi install git:github.com/kurowashi/pi-skill@<tag|commit>` を使います。
+ローカルの作業コピーを使う場合は `pi install /path/to/pi-skill` を使います。
+
+## 使い方
+
+
+設定はありません。インストールすると、次のリクエストから有効になります。
+
+モデルは、一覧の説明が作業に合うスキルを `skill` ツールで読みます。
+
+```
+モデル: skill({ name: "pdf-tools" })
+```
+
+ユーザーが直接呼ぶ場合は、Pi 本体の `/skill:name` を使います。引数はスキルの本文の後ろに続きます。
+
+```
+/skill:pdf-tools extract report.pdf
+```
+
+## コマンド
+
+コマンドは登録しません。モデル向けのツール `skill` を登録します。
+
+## 仕組み
+
+### 動作
+
 
 1. 一覧からスキルの場所（`<location>`）を外して、モデルに送る
 2. モデルは一覧の名前と説明だけでスキルを選ぶ
@@ -50,37 +88,8 @@ References are relative to /home/me/.agents/skills/pdf-tools.
 </skill>
 ```
 
-## 動作要件
+### 挙動
 
-- Pi 1.0.3 で動作確認しています。それ以前のバージョンは未検証です。
-- Node.js 22.19 以上
-
-## インストール
-
-```bash
-pi install git:github.com/kurowashi/pi-skill
-```
-
-バージョンを固定する場合は `pi install git:github.com/kurowashi/pi-skill@<tag|commit>` を使います。
-ローカルの作業コピーを使う場合は `pi install /path/to/pi-skill` を使います。
-
-## 使い方
-
-設定はありません。インストールすると、次のリクエストから有効になります。
-
-モデルは、一覧の説明が作業に合うスキルを `skill` ツールで読みます。
-
-```
-モデル: skill({ name: "pdf-tools" })
-```
-
-ユーザーが直接呼ぶ場合は、Pi 本体の `/skill:name` を使います。引数はスキルの本文の後ろに続きます。
-
-```
-/skill:pdf-tools extract report.pdf
-```
-
-## 挙動
 
 | 条件 | 挙動 |
 |---|---|
@@ -99,7 +108,12 @@ pi install git:github.com/kurowashi/pi-skill
 
 ## 制限
 
+
 - 1 回の呼び出しで読むのは 1 つのスキルです。複数のスキルをまとめて読むことはできません。
 - `read` と `bash` が無効なときの一覧は、`before_agent_start` の時点で拡張が見ているスキルから作ります。pi-switch を使う場合は、pi-switch を pi-skill より先に読み込んでください。後から絞り込まれたスキルが一覧に残るのを防ぐためです。
 - `forceSystemPrompt` でシステムプロンプトを丸ごと差し替えている場合は、一覧が無いため何もしません。
 - スキルの名前は一覧に表示されるとおりに指定してください。
+
+## ライセンス
+
+[MIT](LICENSE)
